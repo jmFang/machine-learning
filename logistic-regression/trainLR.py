@@ -21,14 +21,18 @@ def load_data(file_name):
         lines = line.strip().split("\t")
         feature_tmp.append(1)  #偏置项
         # feartures
-        for i in range(len(lines)-1):
-            feature_tmp.append(float(lines[i]))
-        label_tmp.append(float(lines[-1]))
-
+        for i in range(len(lines)):
+            if i == 1:
+                label_tmp.append(float(lines[i]))
+            elif i != 0:
+                feature_tmp.append(float(lines[i]))
         feature_data.append(feature_tmp)
         label_data.append(label_tmp)
     f.close() #close file
     # list 转 矩阵
+    # feature_t,_,_= featureNormal(np.mat(feature_data))
+    # label_t,_,_ = featureNormal(np.mat(label_data))
+    # return feature_t, label_t
     return np.mat(feature_data), np.mat(label_data)
 
 def sig(x):
@@ -38,7 +42,7 @@ def sig(x):
     '''
     return 1.0 / (1 + np.exp(-x))
 
-def train_process(feature, label, maxCycle, alpha):
+def train_process(feature, label, maxCycle, alpha, lam = 1):
     '''use gradient desent algorithm to train LR model
     input: feature (mat) feartures
            label (mat) labels
@@ -48,19 +52,49 @@ def train_process(feature, label, maxCycle, alpha):
     '''
     # number of colume (number of fearture)
     n = np.shape(feature)[1]
+    m = np.shape(label)[0]
     # initialize the weights
     w = np.mat(np.ones((n,1)))
+    cost_histroy = np.zeros((maxCycle+1, 1))
+    weight_his = np.zeros((maxCycle+2,n))
     i = 0
+    convergence_rate = 0.001
     while i <= maxCycle:
-        i += 1
         h = sig(feature * w)
-        err = label - h
+        err = h - label
+        cost_histroy[i] = error_rate(h,label)
         if i % 100 == 0:
             print('\t-----------iter= '+str(i)+\
                 ',train error rate= ' + str(error_rate(h,label)))
+        if i > 0 and cost_histroy[i-1,0] - cost_histroy[i,0] > 0 and cost_histroy[i-1,0] - cost_histroy[i, 0] <= convergence_rate:
+            print("convergenced with rate :" + str(cost_histroy[i-1,0] - cost_histroy[i,0]) +\
+                "at iter " + str(i))
             # update weights
-            w = w + alpha * feature.T * err
-    return w
+        w = w - alpha * ((1/m) * (feature.T * err + lam*w))
+        i += 1
+        weight_his[i,:] = w.T
+    for i in range(len(w)):
+        w[i] = np.round(w[i],2)
+    return w, cost_histroy, weight_his
+
+def featureNormal(X):
+    X_normal = X
+    n = X.shape[1]
+    mu = np.zeros((1, n)) 
+    sigma = np.zeros((1,n)) 
+    for i in range(n):
+        mu[0,i] = np.mean(X[:,i])
+        max = np.max(X[:,i])
+        min = np.min(X[:,i])
+        sigma[0, i] = np.std(X[:,i])
+        for j in range(X.shape[0]):
+            if sigma[0,i] != 0:
+                X_normal[j,i] = round(X_normal[j,i] - mu[0,i] /sigma[0,i],2)
+    # X_normal = (X - mu) / sigma
+    if n > 1:
+        for j in range(X.shape[0]):
+            X_normal[j:0] = 1
+    return X_normal, mu, sigma
 
 def error_rate(h, label):
     '''compute current velue of cost function
@@ -135,15 +169,36 @@ def showLogRegression(weights, train_x, train_y):
     plt.show()
 
 if __name__ == "__main__":
+    iters = 300
+    learning_rate = 3
     # 1. load data
     print("-------------1.loading data-------------")
-    feature, label = load_data("data.txt")
+    feature, label = load_data("medical.txt")
+    print(feature)
+    print(label)
     # 2. training LR model
     print("-------------2.training model-----------")
-    w = train_process(feature, label, 10000, 0.01)
+    w, cost, wh = train_process(feature, label, iters, learning_rate)
+    print(w)
     # save final model
     print("-------------3.save model---------------")
     save_model("weights.txt", w)
     # plot figure
     print("-------------4.plot figure--------------")
-    showLogRegression(w, feature, label)
+    # showLogRegression(w, feature, label)
+    plt.plot(cost,label='learning rate:' + str(learning_rate), color='red')
+    plt.title("cost function")
+    plt.xlabel('iteration')
+    plt.ylabel('cost')
+    plt.legend()
+    plt.show()
+    # plt.plot(wh[:,0], label='theta(0)')
+    # plt.plot(wh[:,1], label='theta(1)')
+    # plt.plot(wh[:,2], label='theta(2)')
+    # plt.plot(wh[:,3], label='theta(3)')
+    # plt.plot(wh[:,4], label='theta(4)')
+    # plt.xlabel('iteration')
+    # plt.ylabel('theta(i)')
+    # plt.title('learning rate: ' + str(learning_rate))
+    # plt.legend()
+    # plt.show()
