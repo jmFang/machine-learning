@@ -7,6 +7,7 @@ Date:20180324
 
 import numpy as np
 import matplotlib.pyplot as plt
+import time
 from sklearn import svm
 
 def load_data(data_file):
@@ -28,7 +29,7 @@ def load_data(data_file):
         if lines[-1] == '+':
             label.append(1)
         elif lines[-1] == '-':
-            label.append(0)
+            label.append(-1)
     f.close()
     return np.mat(feature), np.mat(label).T
 
@@ -58,8 +59,11 @@ def main():
     feature, label = load_data("data.txt")
     print(feature)
     print(label)
-    clf = svm.SVC(kernel='linear')
+    clf = svm.SVC(kernel='linear', class_weight='0.15')
+    starttime = time.time()
     clf.fit(feature, label)
+    endtime = time.time()
+    print("cost time: ",endtime - starttime)
     w = clf.coef_[0]
 
     # dis = w.dot(w.T)
@@ -93,13 +97,14 @@ def main():
     plt.plot(xx,yy_up, label='up')  
     plt.xlabel("x1")
     plt.ylabel("x2")
-    plt.scatter(clf.support_vectors_[0,0],clf.support_vectors_[0,1],s=60, c='red') 
-    plt.scatter(clf.support_vectors_[2,0],clf.support_vectors_[2,1],s=60, c='blue') 
+ 
     for i in range(np.shape(feature)[0]):
          if label[i,0] == 1: 
             plt.plot(feature[i,0],feature[i,1],'+b')
-         elif label[i,0] == 0:
+         elif label[i,0] == -1:
             plt.plot(feature[i,0],feature[i,1],'or') 
+    plt.scatter(clf.support_vectors_[0,0],clf.support_vectors_[0,1],s=60, c='red') 
+    plt.scatter(clf.support_vectors_[2,0],clf.support_vectors_[2,1],s=60, c='blue')
     plt.axis('tight')  
     plt.legend()
     plt.show()
