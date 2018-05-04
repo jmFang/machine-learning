@@ -1,154 +1,129 @@
-from numpy import *
+import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
-
-class BPNet(object):
-  def __init__(self):                       #构造函数
-    self.eb = 0.01          #容差
-    self.iterator = 0       #算法收敛时的迭代次数
-    self.eta = 0.1          #学习率：相当于步长
-    self.mc = 0.3           #动量因子：网络设计参数，是主要的调优参数
-    self.maxiter = 2000     #最大的迭代次数
-    self.nHidden = 4        #隐含层神经元
-    self.nOut = 1           #输出层个数
-
-    # 以下属性由系统生成
-    self.errlist = []       #误差列表：保存了误差参数的变化用于评估收敛
-    self.dataMat = 0        #训练集
-    self.classLabels = 0    #分类标签集
-    self.nSampNum = 0       #样本集行数
-    self.nSampDim = 0       #样本列数
+import os
+from matplotlib.colors import ListedColormap
 
 
-  def logistic(self,net):                   #激活（传递）函数
-    return 1.0/(1.0 + exp(-net))
 
-  def dlogit(self, net):                    #激活（传递）函数的导函数
-    return multiply(net, (1.0 - net))
+class Perceptron(object):
+    """
+    Parameters
+    ------------
+    eta : float
+        学习率 (between 0.0 and 1.0)
+    n_iter : int
+        迭代次数
+    Attributes
+    -----------
+    w_ : 1d-array
+        权重
+    errors_ : list
+        误差
+    """
+    def __init__(self, eta=0.01, n_iter=10):
+        self.eta = eta
+        self.n_iter = n_iter
 
-  def errorfunc(self, inX):                 #矩阵各元素平方之和
-    return sum(power(inX,2))*0.5
+    def fit(self, X, y):
+        self.w_ = np.zeros(1 + X.shape[1])
+        self.errors_ = []
 
-  def normalize(self, dataMat):             #数据标准化（归一化）
-    [m, n] = shape(dataMat)
-    for i in range(n-1):
-      dataMat[:,i] = (dataMat[:,1] - mean(dataMat[:,1])) / (std(dataMat[:,i]) + 1.0e-10)
-    return dataMat
+        for _ in range(self.n_iter):
+            errors = 0
+            for xi, target in zip(X, y):
+                update = self.eta * (target - self.predict(xi))
+                self.w_[1:] += update * xi
+                self.w_[0] += update
+                errors += int(update != 0.0)
+            self.errors_.append(errors)
+        return self
 
-  def loadDataSet(self,filename):           #加载数据集
-    self.dataMat = []; self.classLabels = []
-    fr = open(filename)
-    for line in fr.readlines():
-      lineArr = line.strip().split()
-      self.dataMat.append([float(lineArr[0]), float(lineArr[1]), 1.0])
-      self.classLabels.append(int(lineArr[2]))
-    self.dataMat = mat(self.dataMat)
-    m, n = shape(self.dataMat)
-    self.nSampNum = m         #样本数量
-    self.nSampDim = n-1       #样本维数，减去偏置
+    def net_input(self, X):
+        return np.dot(X, self.w_[1:]) + self.w_[0]
 
-  def addcol(self, matrix1, matrix2):       #增加新列
-    [m1, n1] = shape(matrix1)
-    [m2, n2] = shape(matrix2)
-    if m1 != m2:
-      print("different rows, can not merge matrix")
-      return
-    mergeMat = zeres((m1, n1+n2))
-    mergeMat[:,0:n1] = matrix1[:,0:n1]
-    mergeMat[:,n1:(n1+n2)] = matrix2[:,0:n2]
-    return mergeMat
+    def predict(self, X):
+        return np.where(self.net_input(X) >= 0.0, 1, -1)
 
-  def init_hiddenWB(self):                  #初始化隐藏层
-    self.hi_w = 2.0 * (random.rand(self.nHidden, self.nSampDim) - 0.5)
-    self.hi_b = 2.0 * (random.rand(self.nHidden, 1) - 0.5)
-    self.hi_wb = mat(self.addcol(mat(self.hi_w), mat(self.hi_b)))
-
-  def init_OutputWB(self):                  #初始化输出层
-    self.out_w = 2.0 * (random.rand(self.nOut, self.nHidden) - 0.5)
-    self.out_b = 2.0 * (random.rand(self.nOut, 1) - 0.5)
-    self.out_wb = 2.0 * (self.addcol(mat(self.out_w), mat(self.out_b)))
-
-
-  def bpTrain(self):                        #BP网络主程序
-    SampIn = self.dataMat.T      #输入矩阵
-    expected = mat(self.classLabels)    #预测输出
-    self.init_hiddenWB()
-    self.init_OutputWB()
-    dout_wbOld = 0.0; dhi_wbOld = 0.0         #默认t-1权值
-
-    #主循环
-    for i in range(self.maxiter):
-      #1. 工作信号正向传播
-      #1.1 信息从输入层到隐含层：这里使用了矢量计算，计算的是整个样本集的结果。
-      hi_input = self.hi_wb * SampIn
-      hi_output = self.logistic(hi_input)
-      hi2out = self.addcol(hi_output.T, ones((self.nSampNum, 1)).T)
-
-      #1.2 从隐含层到输出层：
-      out_input = self.out_wb * hi2out
-      out_output = self.logistic(out_input)
-
-      #2. 误差计算
-      err = expected - out_output
-      sse = self.errorfunc(err)
-      self.errlist.append(sse)
-      if sse <= self.eb:
-        self.iterator = i+1
-        break
-
-      #3. 误差信号反向传播
-      DELTA = multiply(err, self.dlogit(out_output))  #DELTA为输出层的梯度
-      # delta 为隐含层的梯度
-      delta = multiply(self.out_wb[:,:-1].T * DELTA, self.dlogit(hi_output))
-      dout_wb = DELTA * hi2out.T
-      dhi_wb = delta * SampIn.T
-
-      # 更新输出层和隐含层的权值
-      if i == 0:
-        self.out_wb = self.out_wb + self.eta * dout_wb
-        self.hi_wb = self.hi_wb + self.eta * dhi_wb
-      else:
-        self.out_wb = self.out_wb + (1.0 - self.mc) * self.eta * dout_wb + self.mc * dout_wbOld
-        self.hi_wb = self.hi_wb + (1.0 - self.mc) * self.eta * dhi_wb + self.mc * dhi_wbOld
-      dout_wbOld = dout_wb; dhi_wbOld = dhi_wb
-
-
-  def BPClassfier(self. start, end, steps=30):  #BP网络分类器
-    x = linspace(start, end, steps)
-    xx = mat(ones(steps, steps))
-    xx[:,0:steps] = x
-    yy = xx.T
-    z = ones((len(xx), len(yy)))
-    for i in range(len(xx)):
-      for j in range(len(yy)):
-        xi = []; tauex = []; tautemp = []
-        mat(xi.append([xx[i,j], yy[i,j], 1]))
-        hi_input = self.hi_wb * (mat(xi).T)
-        hi_out = self.logistic(hi_input)
-
-        taumrow, taucol = shape(hi_out)
-        tauex = mat(ones((1,taumrow + 1)))
-        tauex[:,0:taumrow] = (hi_out.T)[:, 0:taumrow]
-        out_input = self.out_wb * (mat(tauex).T)
-        out = self.logistic(out_input)
-        z[i, j] = out
-    return x, z
-
-  def classfyLine(self, plt, x, z)：            #绘制分类线
-    plt.contour(x, x, z, 1, colors='black')
-
-  def TrendLine(self, plt, color='r'):          #绘制趋势线：可调整颜色
-    X = linspace(0, self.maxiter, self.maxiter)
-    Y = log2(self.errlist)
-    plt.plot(X, Y,color)
-
-  def drawClassScatter(self, plt):              #绘制分类点
-    i = 0
-    for mydata in self.dataMat:
-      if self.classLabels[i] == 0:
-        plt.scatter(mydata[0,0], mydata[0,1], c='blue', marker='o')
-      else:
-        plt.scatter(mydata[0,0], mydata[0,1], c='res', marker='s')
-      i += 1
-
-
+def load_data(file_name):
+    '''导入数据
+    input:  file_name(string):文件的存储位置
+    output: feature_data(mat):特征
+            label_data(mat):标签
+            n_class(int):类别的个数
+    '''
+    # 1、获取特征
+    f = open(file_name)  # 打开文件
+    feature_data = []
+    label_tmp = []
+    for line in f.readlines():
+        feature_tmp = []
+        lines = line.strip().split("\t")
+        for i in range(len(lines) - 1):
+            feature_tmp.append(float(lines[i]))
+        label_tmp.append(int(lines[-1]))      
+        feature_data.append(feature_tmp)
+    f.close()  # 关闭文件
     
+    # 2、获取标签
+    m = len(label_tmp)
+    n_class = len(set(label_tmp))  # 得到类别的个数
+    print("n_class", n_class)
+    
+    label_data = np.mat(np.zeros((m, n_class)))
+    for i in range(m):
+        label_data[i, label_tmp[i]] = 1
+    
+    return np.mat(feature_data), label_data, n_class
+
+def plot_decision_regions(X, y, classifier, resolution=0.01):
+    """
+    可视化分类器
+    :param X:  样本特征向量
+    :param y:  样本标签向量
+    :param classifier: 分类器
+    :param resolution: 残差
+    :return:
+    """
+
+    markers = ('s', 'x', 'o', '^', 'v')
+    colors = ('red', 'blue', 'lightgreen', 'gray', 'cyan')
+    cmap = ListedColormap(colors[:len(np.unique(y))])
+
+    x1_min, x1_max = X[:, 0].min() - 1, X[:, 0].max() + 1
+    x2_min, x2_max = X[:, 1].min() - 1, X[:, 1].max() + 1
+    xx1, xx2 = np.meshgrid(np.arange(x1_min, x1_max, resolution), np.arange(x2_min, x2_max, resolution))
+
+    Z = classifier.predict(np.array([xx1.ravel(), xx2.ravel()]).T)
+    Z = Z.reshape(xx2.min(), xx2.max())
+
+    plt.contourf(xx1, xx2, Z, alpha=0.4, cmap=cmap)
+    plt.xlim(xx1.min(), xx1.max())
+    plt.ylim(xx2.min(), xx2.max())
+
+    for idx, cl in enumerate(np.unique(y)):
+        plt.scatter(x=X[y == cl, 0], y=X[y == cl, 1], alpha=0.8, c=cmap(idx), marker=markers[idx], label=cl)
+
+
+feature, label, n_class = load_data("data.txt")
+ppn = Perceptron(eta=0.1, n_iter=10)
+ppn.fit(feature, label)
+
+# 使用散点图可视化样本
+# plt.scatter(feature[:50, 0], feature[:50,1], color='red', marker='o', label='setosa')
+# plt.scatter(feature[50:100, 0], feature[50:100, 1], color='blue', marker='x', label='versicolor')
+# plt.xlabel('petal length')
+# plt.ylabel('sepal length')
+# plt.legend(loc='upper left')
+# plt.show
+# plt.plot(range(1, len(ppn.errors_) + 1), ppn.errors_, marker='o')
+# plt.xlabel('Epochs')
+# plt.ylabel('Number of misclassifications')
+# plt.show()
+
+# 调用可视化分类器函数
+plot_decision_regions(feature, label, classifier=ppn)
+plt.xlabel('sepal length [cm]')
+plt.ylabel('petal length [cm]')
+plt.legend(loc='upper left')
+plt.show()
